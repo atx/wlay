@@ -1,0 +1,6 @@
+[submodule "nuklear"]
+	path = nuklear
+	url = https://github.com/vurtun/nuklear
+[submodule "wlr-protocols"]
+	path = wlr-protocols
+	url = https://github.com/swaywm/wlr-protocols.git
