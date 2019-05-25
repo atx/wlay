@@ -37,6 +37,14 @@
 #define MAX_ELEMENT_BUFFER 128 * 1024
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+#define max(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+      _a > _b ? _a : _b; })
+#define min(a,b) \
+   ({ __typeof__ (a) _a = (a); \
+      __typeof__ (b) _b = (b); \
+      _a < _b ? _a : _b; })
 
 struct wlay_state {
     /* Wayland state */
@@ -50,9 +58,15 @@ struct wlay_state {
 
     /* GL/nuklear state */
     struct {
+        // TODO: Does this need to be a struct?
         GLFWwindow *window;
     } gl;
     struct nk_context *nk;
+
+    struct {
+        struct nk_vec2 screen_size;
+        bool dragging;
+    } gui;
     bool should_apply;
 
     uint32_t serial;
@@ -73,6 +87,9 @@ struct wlay_head {
     bool enabled;
     int32_t transform;
     wl_fixed_t scale;
+
+    int32_t w;
+    int32_t h;
 
     bool focused;
 
@@ -396,45 +413,20 @@ const float editor_scale = 1./10;
 
 static void wlay_gui_editor_head(struct wlay_head *head)
 {
-    struct nk_context *ctx = head->wlay->nk;
-    float x, y, w, h;
-    switch(head->transform) {
-    case WL_OUTPUT_TRANSFORM_NORMAL:
-    case WL_OUTPUT_TRANSFORM_180:
-    case WL_OUTPUT_TRANSFORM_FLIPPED:
-    case WL_OUTPUT_TRANSFORM_FLIPPED_180:
-        x = head->x;
-        y = head->y;
-        w = head->current_mode->width;
-        h = head->current_mode->height;
-        break;
-    case WL_OUTPUT_TRANSFORM_90:
-    case WL_OUTPUT_TRANSFORM_FLIPPED_90:
-        x = head->x;
-        y = head->y;
-        w = head->current_mode->height;
-        h = head->current_mode->width;
-        break;
-    case WL_OUTPUT_TRANSFORM_270:
-    case WL_OUTPUT_TRANSFORM_FLIPPED_270:
-        x = head->x;
-        y = head->y;
-        w = head->current_mode->height;
-        h = head->current_mode->width;
-        break;
-    default:
-        x = y = w = h = 0;
-        log_info("Transform %d not implemented", head->transform);
-        break;
-    }
-    x *= editor_scale;
-    y *= editor_scale;
-    w *= editor_scale;
-    h *= editor_scale;
-    struct nk_rect bounds = nk_rect(x, y, w, h);
+    struct wlay_state *wlay = head->wlay;
+    struct nk_context *ctx = wlay->nk;
+    struct nk_rect layout_bounds = nk_layout_space_bounds(ctx);
+    struct nk_rect bounds = nk_rect(
+        head->x*editor_scale +
+            layout_bounds.w/2 - wlay->gui.screen_size.x*editor_scale/2,
+        head->y*editor_scale +
+            layout_bounds.h/2 - wlay->gui.screen_size.y*editor_scale/2,
+        head->w*editor_scale,
+        head->h*editor_scale
+    );
     nk_layout_space_push(ctx, bounds);
     if (nk_group_begin(ctx, head->name, NK_WINDOW_MOVABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
-        nk_layout_row_static(ctx, h, w, 1);
+        nk_layout_row_static(ctx, bounds.h, bounds.w, 1);
         nk_label_colored(
             ctx, head->name, NK_TEXT_CENTERED,
             head->focused ? nk_rgb(200, 100, 100) : ctx->style.text.color
@@ -448,13 +440,14 @@ static void wlay_gui_editor_head(struct wlay_head *head)
         );
         if (left_mouse_clicked && click_in_group) {
             struct wlay_head *head_other;
-            wl_list_for_each(head_other, &head->wlay->wl.heads, link) {
+            wl_list_for_each(head_other, &wlay->wl.heads, link) {
                 head_other->focused = head_other == head;
             }
         }
         if (left_mouse_down && click_in_group && head->focused) {
             head->x = head->x + in->mouse.delta.x/editor_scale;
             head->y = head->y + in->mouse.delta.y/editor_scale;
+            wlay->gui.dragging = true;
             in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.x += in->mouse.delta.x;
             in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.y += in->mouse.delta.y;
         }
@@ -509,18 +502,134 @@ static void wlay_gui_details(struct wlay_head *head)
 }
 
 
+static void wlay_calculate_screen_space(struct wlay_state *wlay)
+{
+    // We do this before rendering the GUI to allow stuff like edge
+    // snapping/editor autoscaling
+
+    // First, we calculate individual head rectangles
+    struct wlay_head *head;
+    wl_list_for_each(head, &wlay->wl.heads, link) {
+        int32_t w, h;
+        switch(head->transform) {
+        case WL_OUTPUT_TRANSFORM_NORMAL:
+        case WL_OUTPUT_TRANSFORM_180:
+        case WL_OUTPUT_TRANSFORM_FLIPPED:
+        case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+            w = head->current_mode->width;
+            h = head->current_mode->height;
+            break;
+        case WL_OUTPUT_TRANSFORM_90:
+        case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+            w = head->current_mode->height;
+            h = head->current_mode->width;
+            break;
+        case WL_OUTPUT_TRANSFORM_270:
+        case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+            w = head->current_mode->height;
+            h = head->current_mode->width;
+            break;
+        default:
+            w = head->current_mode->width;
+            h = head->current_mode->height;
+            log_info("Transform %d not implemented", head->transform);
+            break;
+        }
+        head->h = h;
+        head->w = w;
+    }
+
+    // Now we find the screen space bounds
+    // TODO: This will be fucked if no head is enabled...
+    if (!wlay->nk->input.mouse.buttons[NK_BUTTON_LEFT].down) {
+        int32_t min_x = INT32_MAX;
+        int32_t max_x = INT32_MIN;
+        int32_t min_y = INT32_MAX;
+        int32_t max_y = INT32_MIN;
+
+        wl_list_for_each(head, &wlay->wl.heads, link) {
+            min_x = min(min_x, head->x);
+            max_x = max(max_x, head->x + head->w);
+            min_y = min(min_y, head->y);
+            max_y = max(max_y, head->y + head->h);
+        }
+        // Now we shift everything to be based on 0,0
+        wl_list_for_each(head, &wlay->wl.heads, link) {
+            head->x -= min_x;
+            head->y -= min_y;
+        }
+        wlay->gui.screen_size.x = max_x - min_x;
+        wlay->gui.screen_size.y = max_y - min_y;
+    }
+}
+
+
+static void wlay_snap(struct wlay_state *wlay)
+{
+    struct wlay_head *focused;
+    wl_list_for_each(focused, &wlay->wl.heads, link) {
+        if (focused->focused) {
+            break;
+        }
+    }
+    if (!focused->focused) {
+        return;
+    }
+
+    // Compute snap points
+    struct wlay_head *other;
+    int32_t best_delta = INT32_MAX;
+    int32_t best_x;
+    int32_t best_y;
+    wl_list_for_each(other, &wlay->wl.heads, link) {
+        if (other == focused) {
+            continue;
+        }
+        int32_t snaps[4][2] = {
+            // Left border to right border
+            {other->x + other->w, focused->y},
+            // Right border to left border
+            {other->x - focused->w, focused->y},
+            // Top border to bottom border
+            {focused->x, other->y + other->h},
+            // Bottom border to top border
+            {focused->x, other->y - focused->h},
+        };
+        for (unsigned int i = 0; i < ARRAY_SIZE(snaps); i++) {
+            int32_t want_x = snaps[i][0];
+            int32_t want_y = snaps[i][1];
+            float delta_x = abs(focused->x - want_x);
+            float delta_y = abs(focused->y - want_y);
+            float delta = max(delta_x, delta_y);
+            if (delta < best_delta) {
+                best_x = want_x;
+                best_y = want_y;
+                best_delta = delta;
+            }
+        }
+    }
+
+    if (best_delta < 200) {
+        focused->x = best_x;
+        focused->y = best_y;
+    }
+}
+
+
 static void wlay_gui(struct wlay_state *wlay)
 {
     int window_width, window_height;
     glfwGetWindowSize(wlay->gl.window, &window_width, &window_height);
     struct nk_context *ctx = wlay->nk;
 
+    wlay_calculate_screen_space(wlay);
+
+    wlay->gui.dragging = false;
+
     /* GUI */
     ctx->style.window.padding = nk_vec2(20, 20);
     if (nk_begin(ctx, "", nk_rect(0, 0, window_width, window_height), 0))
     {
-        struct nk_command_buffer *canvas = nk_window_get_canvas(wlay->nk);
-        const struct nk_color main_color = nk_rgb(200, 100, 100);
         struct wlay_head *head;
         struct wlay_head *focused_head = NULL;
         wl_list_for_each(head, &wlay->wl.heads, link) {
@@ -551,6 +660,9 @@ static void wlay_gui(struct wlay_state *wlay)
             log_info("Apply");
             wlay->should_apply = true;
         }
+    }
+    if (nk_input_is_key_down(&ctx->input, NK_KEY_TAB)) {
+        wlay_snap(wlay);
     }
     nk_end(ctx);
 }
