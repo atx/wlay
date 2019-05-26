@@ -240,7 +240,10 @@ static void handle_head_enabled(void *data,
                                 int32_t enabled)
 {
     struct wlay_head *head = data;
-    head->enabled = true;
+    head->enabled = !!enabled;
+    if (!head->enabled) {
+        head->current_mode = NULL;
+    }
 }
 
 static void handle_head_current_mode(void *data,
@@ -411,9 +414,32 @@ static void wlay_gui_init(struct wlay_state *wlay)
 }
 
 
-static void wlay_gui_editor(struct wlay_state *wlay)
+static void wlay_head_enable(struct wlay_head *head)
 {
+    log_info("Enabling %s", head->name);
+    struct wlay_mode *mode = NULL;
+    wl_list_for_each(mode, &head->modes, link) {
+        if (mode->preferred) {
+            break;
+        }
+    }
+    if (mode == NULL) {
+        log_info("No mode available for %s", head->name);
+        return;
+    }
+    // If there is no preferred mode, we just take the last one and pray
+    head->current_mode = mode;
+    head->enabled = true;
+    head->scale = wl_fixed_from_int(1);
+}
 
+
+static void wlay_head_disable(struct wlay_head *head)
+{
+    log_info("Disabling %s", head->name);
+    head->enabled = false;
+    head->focused = false;
+    head->current_mode = NULL;
 }
 
 
@@ -480,17 +506,23 @@ static const char *wlay_output_transform_names[] = {
 static void wlay_gui_details(struct wlay_head *head)
 {
     struct nk_context *ctx = head->wlay->nk;
-    nk_layout_row_dynamic(ctx, 30, 1);
+    nk_layout_row_dynamic(ctx, 0, 1);
     nk_labelf(ctx, NK_TEXT_CENTERED, "Output %s \"%s\"", head->name, head->description);
 
-    nk_layout_row_dynamic(ctx, 30, 3);
+    nk_layout_row_begin(ctx, NK_STATIC, 0, 3);
+    nk_layout_row_push(ctx, 80);
+    if (nk_button_label(ctx, "Disable")) {
+        wlay_head_disable(head);
+    }
     // Transform selector
+    nk_layout_row_push(ctx, 100);
     head->transform = nk_combo(
             ctx, wlay_output_transform_names, ARRAY_SIZE(wlay_output_transform_names),
             head->transform, 25, nk_vec2(200, 200)
     );
 
     // Mode selector
+    nk_layout_row_push(ctx, 150);
     int mode_count = wl_list_length(&head->modes);
     char *mode_strs[mode_count];
     struct wlay_mode *modes[mode_count];
@@ -519,6 +551,9 @@ static void wlay_calculate_screen_space(struct wlay_state *wlay)
     // First, we calculate individual head rectangles
     struct wlay_head *head;
     wl_list_for_each(head, &wlay->wl.heads, link) {
+        if (!head->enabled) {
+            continue;
+        }
         int32_t w, h;
         switch(head->transform) {
         case WL_OUTPUT_TRANSFORM_NORMAL:
@@ -557,6 +592,9 @@ static void wlay_calculate_screen_space(struct wlay_state *wlay)
         int32_t max_y = INT32_MIN;
 
         wl_list_for_each(head, &wlay->wl.heads, link) {
+            if (!head->enabled) {
+                continue;
+            }
             min_x = min(min_x, head->x);
             max_x = max(max_x, head->x + head->w);
             min_y = min(min_y, head->y);
@@ -707,10 +745,10 @@ static void wlay_gui(struct wlay_state *wlay)
                 focused_head = head;
             }
         }
-        nk_layout_space_begin(ctx, NK_STATIC, 300, wl_list_length(&wlay->wl.heads));
+        nk_layout_space_begin(ctx, NK_STATIC, 500, wl_list_length(&wlay->wl.heads));
         {
             wl_list_for_each(head, &wlay->wl.heads, link) {
-                if (head->current_mode == NULL || head == focused_head) {
+                if (!head->enabled || head == focused_head) {
                     continue;
                 }
                 wlay_gui_editor_head(head);
@@ -720,17 +758,45 @@ static void wlay_gui(struct wlay_state *wlay)
                 wlay_gui_editor_head(focused_head);
             }
         }
-        nk_layout_row_dynamic(ctx, 200, 1);
+        nk_layout_row_dynamic(ctx, 0, 1);
         if (focused_head != NULL) {
             wlay_gui_details(focused_head);
         }
         nk_layout_row_static(ctx, 10, 100, 1);
-        nk_layout_row_begin(ctx, NK_STATIC, 0, 5);
+        nk_layout_row_begin(ctx, NK_STATIC, 0, 6);
         {
             nk_layout_row_push(ctx, 50);
             if (nk_button_label(ctx, "Apply")) {
                 wlay->should_apply = true;
             }
+            int max_head_count = wl_list_length(&wlay->wl.heads);
+            const char *disabled_names[max_head_count + 1];
+            disabled_names[0] = "Enable";
+            int disabled_head_count = 0;
+            struct wlay_head *head;
+            wl_list_for_each(head, &wlay->wl.heads, link) {
+                if (!head->enabled) {
+                    disabled_names[++disabled_head_count] = head->name;
+                }
+            }
+            nk_layout_row_push(ctx, 100);
+            int enable_head_idx = nk_combo(
+                ctx, disabled_names,
+                disabled_head_count == 0 ? 0 : disabled_head_count + 1,
+                0, 30, nk_vec2(200, 200)
+            );
+            if (enable_head_idx != 0) {
+                wl_list_for_each(head, &wlay->wl.heads, link) {
+                    if (head->enabled) {
+                        continue;
+                    }
+                    if (--enable_head_idx == 0) {
+                        wlay_head_enable(head);
+                        break;
+                    }
+                }
+            }
+
             nk_layout_row_push(ctx, 20);
             nk_label(ctx, "", NK_TEXT_LEFT);
             const char *mode_strs[] = {
@@ -770,6 +836,10 @@ void wlay_push_settings(struct wlay_state *wlay)
     // TODO: Handle failures
     struct wlay_head *head;
     wl_list_for_each(head, &wlay->wl.heads, link) {
+        if (!head->enabled) {
+            zwlr_output_configuration_v1_disable_head(config, head->wlr);
+            continue;
+        }
         struct zwlr_output_configuration_head_v1 *cfg_head =
             zwlr_output_configuration_v1_enable_head(config, head->wlr);
         zwlr_output_configuration_head_v1_set_mode(cfg_head, head->current_mode->wlr);
