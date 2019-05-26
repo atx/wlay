@@ -390,7 +390,7 @@ static void wlay_gui_init(struct wlay_state *wlay)
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GL_FALSE);
     glfwWindowHint(GLFW_FOCUSED, GL_FALSE);
-    wlay->gl.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Demo", NULL, NULL);
+    wlay->gl.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "wlay", NULL, NULL);
     glfwMakeContextCurrent(wlay->gl.window);
     glfwGetWindowSize(wlay->gl.window, &width, &height);
 
