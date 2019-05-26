@@ -48,7 +48,7 @@
 
 enum wlay_config_type {
     WLAY_CONFIG_SWAY,
-    WLAY_CONFIG_WLRANDR,
+    WLAY_CONFIG_WLRRANDR,
 };
 
 struct wlay_state {
@@ -644,10 +644,34 @@ static void wlay_save_config_sway(struct wlay_state *wlay, FILE *f)
 }
 
 
+static void wlay_save_config_wlrrandr(struct wlay_state *wlay, FILE *f)
+{
+    struct wlay_head *head;
+    fprintf(f, "wlr-randr \\\n");
+    wl_list_for_each(head, &wlay->wl.heads, link) {
+        fprintf(f, "\t--output %s ", head->name);
+        if (head->enabled) {
+            fprintf(f, "--mode %dx%d ",
+                    head->current_mode->width,
+                    head->current_mode->height);
+            fprintf(f, "--pos %d,%d ", head->x, head->y);
+            fprintf(f, "--transform %s ", wlay_output_transform_names[head->transform]);
+        } else {
+            fprintf(f, "--off ");
+        }
+        if (head->link.next) {
+            fprintf(f, "\\");
+        }
+        fprintf(f, "\n");
+    }
+}
+
+
 static void wlay_save_config(struct wlay_state *wlay)
 {
     void (*handlers[])(struct wlay_state *, FILE *) = {
-        [WLAY_CONFIG_SWAY] = wlay_save_config_sway
+        [WLAY_CONFIG_SWAY] = wlay_save_config_sway,
+        [WLAY_CONFIG_WLRRANDR] = wlay_save_config_wlrrandr,
     };
     log_info("Saving to %s", wlay->gui.file_path);
     FILE *f = fopen(wlay->gui.file_path, "w");
@@ -655,7 +679,7 @@ static void wlay_save_config(struct wlay_state *wlay)
         log_info("File write failed");
         return;
     }
-    wlay_save_config_sway(wlay, f);
+    handlers[wlay->gui.config_type](wlay, f);
     fclose(f);
 }
 
@@ -701,12 +725,15 @@ static void wlay_gui(struct wlay_state *wlay)
         }
         // TODO: Fix this layout clusterfuck
         nk_layout_row_static(ctx, 30, 100, 1);
-        nk_layout_row_static(ctx, 30, 100, 2);
+        nk_layout_row_static(ctx, 30, 100, 3);
         if (nk_button_label(ctx, "Apply")) {
             wlay->should_apply = true;
         }
-        if (nk_option_label(ctx, "Sway", wlay->gui.config_type == WLAY_CONFIG_SWAY)) {
+        if (nk_option_label(ctx, "sway", wlay->gui.config_type == WLAY_CONFIG_SWAY)) {
             wlay->gui.config_type = WLAY_CONFIG_SWAY;
+        }
+        if (nk_option_label(ctx, "wlr-randr", wlay->gui.config_type == WLAY_CONFIG_WLRRANDR)) {
+            wlay->gui.config_type = WLAY_CONFIG_WLRRANDR;
         }
         nk_layout_row_begin(ctx, NK_STATIC, 30, 2);
         nk_layout_row_push(ctx, 50);
