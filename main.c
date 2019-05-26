@@ -723,29 +723,35 @@ static void wlay_gui(struct wlay_state *wlay)
         if (focused_head != NULL) {
             wlay_gui_details(focused_head);
         }
-        // TODO: Fix this layout clusterfuck
-        nk_layout_row_static(ctx, 30, 100, 1);
-        nk_layout_row_static(ctx, 30, 100, 3);
-        if (nk_button_label(ctx, "Apply")) {
-            wlay->should_apply = true;
+        nk_layout_row_static(ctx, 10, 100, 1);
+        nk_layout_row_begin(ctx, NK_STATIC, 0, 5);
+        {
+            nk_layout_row_push(ctx, 50);
+            if (nk_button_label(ctx, "Apply")) {
+                wlay->should_apply = true;
+            }
+            nk_layout_row_push(ctx, 20);
+            nk_label(ctx, "", NK_TEXT_LEFT);
+            const char *mode_strs[] = {
+                [WLAY_CONFIG_SWAY] = "sway",
+                [WLAY_CONFIG_WLRRANDR] = "wlr-randr",
+            };
+            nk_layout_row_push(ctx, 100);
+            wlay->gui.config_type = nk_combo(
+                ctx, mode_strs, ARRAY_SIZE(mode_strs), wlay->gui.config_type, 30,
+                nk_vec2(200, 200)
+            );
+            nk_layout_row_push(ctx, 200);
+            nk_edit_string_zero_terminated(
+                ctx, NK_EDIT_FIELD, wlay->gui.file_path, sizeof(wlay->gui.file_path),
+                NULL
+            );
+            nk_layout_row_push(ctx, 50);
+            if (nk_button_label(ctx, "Save")) {
+                wlay_save_config(wlay);
+            }
         }
-        if (nk_option_label(ctx, "sway", wlay->gui.config_type == WLAY_CONFIG_SWAY)) {
-            wlay->gui.config_type = WLAY_CONFIG_SWAY;
-        }
-        if (nk_option_label(ctx, "wlr-randr", wlay->gui.config_type == WLAY_CONFIG_WLRRANDR)) {
-            wlay->gui.config_type = WLAY_CONFIG_WLRRANDR;
-        }
-        nk_layout_row_begin(ctx, NK_STATIC, 30, 2);
-        nk_layout_row_push(ctx, 50);
-        if (nk_button_label(ctx, "Save")) {
-            wlay_save_config(wlay);
-        }
-        struct nk_rect bounds = nk_layout_widget_bounds(ctx);
-        nk_layout_row_push(ctx, (bounds.w - 50 - ctx->style.window.padding.x) * 0.8f);
-        nk_edit_string_zero_terminated(
-            ctx, NK_EDIT_FIELD, wlay->gui.file_path, sizeof(wlay->gui.file_path),
-            NULL
-        );
+        nk_layout_row_end(ctx);
     }
 
     if (nk_input_is_key_down(&ctx->input, NK_KEY_TAB)) {
