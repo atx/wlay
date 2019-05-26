@@ -46,6 +46,11 @@
       __typeof__ (b) _b = (b); \
       _a < _b ? _a : _b; })
 
+enum wlay_config_type {
+    WLAY_CONFIG_SWAY,
+    WLAY_CONFIG_WLRANDR,
+};
+
 struct wlay_state {
     /* Wayland state */
     struct {
@@ -66,6 +71,8 @@ struct wlay_state {
     struct {
         struct nk_vec2 screen_size;
         bool dragging;
+        enum wlay_config_type config_type;
+        char file_path[PATH_MAX];
     } gui;
     bool should_apply;
 
@@ -370,6 +377,7 @@ static void wlay_gui_init(struct wlay_state *wlay)
 {
     /* Platform */
     int width = 0, height = 0;
+    strncpy(wlay->gui.file_path, "/tmp/config.txt", sizeof(wlay->gui.file_path));
 
     /* GLFW */
     glfwSetErrorCallback(error_callback);
@@ -456,15 +464,15 @@ static void wlay_gui_editor_head(struct wlay_head *head)
 }
 
 
-static const char *wl_output_transform_names[] = {
+static const char *wlay_output_transform_names[] = {
 	[WL_OUTPUT_TRANSFORM_NORMAL] = "normal",
 	[WL_OUTPUT_TRANSFORM_90] = "90",
 	[WL_OUTPUT_TRANSFORM_180] = "180",
 	[WL_OUTPUT_TRANSFORM_270] = "270",
-	[WL_OUTPUT_TRANSFORM_FLIPPED] = "flip",
-	[WL_OUTPUT_TRANSFORM_FLIPPED_90] = "flip-90",
-	[WL_OUTPUT_TRANSFORM_FLIPPED_180] = "flip-180",
-	[WL_OUTPUT_TRANSFORM_FLIPPED_270] = "flip-270",
+	[WL_OUTPUT_TRANSFORM_FLIPPED] = "flipped",
+	[WL_OUTPUT_TRANSFORM_FLIPPED_90] = "flipped-90",
+	[WL_OUTPUT_TRANSFORM_FLIPPED_180] = "flipped-180",
+	[WL_OUTPUT_TRANSFORM_FLIPPED_270] = "flipped-270",
 };
 
 
@@ -477,7 +485,7 @@ static void wlay_gui_details(struct wlay_head *head)
     nk_layout_row_dynamic(ctx, 30, 3);
     // Transform selector
     head->transform = nk_combo(
-            ctx, wl_output_transform_names, ARRAY_SIZE(wl_output_transform_names),
+            ctx, wlay_output_transform_names, ARRAY_SIZE(wlay_output_transform_names),
             head->transform, 25, nk_vec2(200, 200)
     );
 
@@ -616,6 +624,42 @@ static void wlay_snap(struct wlay_state *wlay)
 }
 
 
+static void wlay_save_config_sway(struct wlay_state *wlay, FILE *f)
+{
+    struct wlay_head *head;
+    wl_list_for_each(head, &wlay->wl.heads, link) {
+        fprintf(f, "output \"%s\" {\n", head->name);
+        if (head->enabled) {
+            fprintf(f, "\tmode %dx%d@%dHz\n",
+                    head->current_mode->width,
+                    head->current_mode->height,
+                    head->current_mode->refresh_rate / 1000);
+            fprintf(f, "\tpos %d %d\n", head->x, head->y);
+            fprintf(f, "\ttransform %s\n", wlay_output_transform_names[head->transform]);
+        } else {
+            fprintf(f, "\tdisable\n");
+        }
+        fprintf(f, "}\n");
+    }
+}
+
+
+static void wlay_save_config(struct wlay_state *wlay)
+{
+    void (*handlers[])(struct wlay_state *, FILE *) = {
+        [WLAY_CONFIG_SWAY] = wlay_save_config_sway
+    };
+    log_info("Saving to %s", wlay->gui.file_path);
+    FILE *f = fopen(wlay->gui.file_path, "w");
+    if (f == NULL) {
+        log_info("File write failed");
+        return;
+    }
+    wlay_save_config_sway(wlay, f);
+    fclose(f);
+}
+
+
 static void wlay_gui(struct wlay_state *wlay)
 {
     int window_width, window_height;
@@ -628,6 +672,7 @@ static void wlay_gui(struct wlay_state *wlay)
 
     /* GUI */
     ctx->style.window.padding = nk_vec2(20, 20);
+    ctx->style.window.spacing = nk_vec2(10, 10);
     if (nk_begin(ctx, "", nk_rect(0, 0, window_width, window_height), 0))
     {
         struct wlay_head *head;
@@ -654,13 +699,28 @@ static void wlay_gui(struct wlay_state *wlay)
         if (focused_head != NULL) {
             wlay_gui_details(focused_head);
         }
+        // TODO: Fix this layout clusterfuck
         nk_layout_row_static(ctx, 30, 100, 1);
-        nk_layout_row_static(ctx, 30, 100, 3);
+        nk_layout_row_static(ctx, 30, 100, 2);
         if (nk_button_label(ctx, "Apply")) {
-            log_info("Apply");
             wlay->should_apply = true;
         }
+        if (nk_option_label(ctx, "Sway", wlay->gui.config_type == WLAY_CONFIG_SWAY)) {
+            wlay->gui.config_type = WLAY_CONFIG_SWAY;
+        }
+        nk_layout_row_begin(ctx, NK_STATIC, 30, 2);
+        nk_layout_row_push(ctx, 50);
+        if (nk_button_label(ctx, "Save")) {
+            wlay_save_config(wlay);
+        }
+        struct nk_rect bounds = nk_layout_widget_bounds(ctx);
+        nk_layout_row_push(ctx, (bounds.w - 50 - ctx->style.window.padding.x) * 0.8f);
+        nk_edit_string_zero_terminated(
+            ctx, NK_EDIT_FIELD, wlay->gui.file_path, sizeof(wlay->gui.file_path),
+            NULL
+        );
     }
+
     if (nk_input_is_key_down(&ctx->input, NK_KEY_TAB)) {
         wlay_snap(wlay);
     }
@@ -670,7 +730,7 @@ static void wlay_gui(struct wlay_state *wlay)
 
 void wlay_push_settings(struct wlay_state *wlay)
 {
-    log_info("Pushing config");
+    log_info("Sending config");
     struct zwlr_output_configuration_v1 *config =
         zwlr_output_manager_v1_create_configuration(wlay->wl.output_manager, wlay->serial);
     // TODO: Handle failures
