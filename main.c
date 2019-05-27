@@ -376,6 +376,35 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = handle_wl_event_remove,
 };
 
+
+static void wlay_wayland_init(struct wlay_state *wlay)
+{
+    wlay->wl.display = wl_display_connect(NULL);
+    if (wlay->wl.display == NULL) {
+        fail("Wayland connection failed");
+    }
+
+    wl_list_init(&wlay->wl.heads);
+    wlay->wl.registry = wl_display_get_registry(wlay->wl.display);
+    wl_registry_add_listener(wlay->wl.registry, &registry_listener, wlay);
+    wl_display_dispatch(wlay->wl.display);
+    wl_display_roundtrip(wlay->wl.display);
+
+    if (wlay->wl.output_manager == NULL) {
+        fail("Compositor does not support wlr-output-management-unstable-v1");
+    }
+}
+
+
+static void wlay_wayland_destroy(struct wlay_state *wlay)
+{
+    // TODO: Actually destroy these somehow?
+    zwlr_output_manager_v1_destroy(wlay->wl.output_manager);
+    wl_registry_destroy(wlay->wl.registry);
+    wl_display_disconnect(wlay->wl.display);
+}
+
+
 static void wlay_gui_init(struct wlay_state *wlay)
 {
     /* Platform */
@@ -385,8 +414,7 @@ static void wlay_gui_init(struct wlay_state *wlay)
     /* GLFW */
     glfwSetErrorCallback(error_callback);
     if (!glfwInit()) {
-        fprintf(stdout, "[GFLW] failed to init!\n");
-        exit(1);
+        fail("GLFW failed to initialize");
     }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -401,8 +429,7 @@ static void wlay_gui_init(struct wlay_state *wlay)
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glewExperimental = 1;
     if (glewInit() != GLEW_OK) {
-        fprintf(stderr, "Failed to setup GLEW\n");
-        exit(1);
+        fail("GLEW failed to initialize");
     }
 
     wlay->nk = nk_glfw3_init(wlay->gl.window, NK_GLFW3_INSTALL_CALLBACKS);
@@ -411,6 +438,13 @@ static void wlay_gui_init(struct wlay_state *wlay)
     struct nk_font_atlas *atlas;
     nk_glfw3_font_stash_begin(&atlas);
     nk_glfw3_font_stash_end();
+}
+
+
+static void wlay_gui_destroy(struct wlay_state *wlay)
+{
+    nk_glfw3_shutdown();
+    glfwTerminate();
 }
 
 
@@ -861,21 +895,9 @@ int main(void)
 {
     struct wlay_state wlay;
     memset(&wlay, 0, sizeof(wlay));
+
+    wlay_wayland_init(&wlay);
     wlay_gui_init(&wlay);
-
-    wl_list_init(&wlay.wl.heads);
-    wlay.wl.display = wl_display_connect(NULL);
-    if (wlay.wl.display == NULL) {
-        fail("wl_display_connect failed");
-    }
-    wlay.wl.registry = wl_display_get_registry(wlay.wl.display);
-    wl_registry_add_listener(wlay.wl.registry, &registry_listener, &wlay);
-    wl_display_dispatch(wlay.wl.display);
-    wl_display_roundtrip(wlay.wl.display);
-
-    if (wlay.wl.output_manager == NULL) {
-        fail("compositor does not support wlr-output-management-unstable-v1");
-    }
 
     while (!glfwWindowShouldClose(wlay.gl.window))
     {
@@ -899,8 +921,9 @@ int main(void)
         nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
         glfwSwapBuffers(wlay.gl.window);
     }
-    nk_glfw3_shutdown();
-    glfwTerminate();
+
+    wlay_gui_destroy(&wlay);
+    wlay_wayland_destroy(&wlay);
     return 0;
 }
 
