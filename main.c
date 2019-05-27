@@ -675,39 +675,50 @@ static void wlay_snap(struct wlay_state *wlay)
 
     // Compute snap points
     struct wlay_head *other;
-    int32_t best_delta = INT32_MAX;
+    int32_t best_delta_x = INT32_MAX;
+    int32_t best_delta_y = INT32_MAX;
     int32_t best_x;
     int32_t best_y;
     wl_list_for_each(other, &wlay->wl.heads, link) {
         if (other == focused) {
             continue;
         }
-        int32_t snaps[4][2] = {
-            // Left border to right border
-            {other->x + other->w, focused->y},
-            // Right border to left border
-            {other->x - focused->w, focused->y},
-            // Top border to bottom border
-            {focused->x, other->y + other->h},
-            // Bottom border to top border
-            {focused->x, other->y - focused->h},
+        bool x_feasible = (focused->y + focused->h) > other->y &&
+            focused->y < (other->y + other->h);
+        int32_t x_snaps[2] = {
+            other->x + other->w, other->x - focused->w
         };
-        for (unsigned int i = 0; i < ARRAY_SIZE(snaps); i++) {
-            int32_t want_x = snaps[i][0];
-            int32_t want_y = snaps[i][1];
-            float delta_x = abs(focused->x - want_x);
-            float delta_y = abs(focused->y - want_y);
-            float delta = max(delta_x, delta_y);
-            if (delta < best_delta) {
+        bool y_feasible = (focused->x + focused->w) > other->x &&
+            focused->x < (other->x + other->w);
+        int32_t y_snaps[2] = {
+            // Top border to bottom border
+            other->y + other->h,
+            // Bottom border to top border
+            other->y - focused->h
+        };
+        _Static_assert(ARRAY_SIZE(x_snaps) == ARRAY_SIZE(y_snaps), "Invalid snaps");
+        for (unsigned int i = 0; i < ARRAY_SIZE(x_snaps); i++) {
+            int32_t want_x = x_snaps[i];
+            int32_t delta_x = abs(focused->x - want_x);
+            if (x_feasible && delta_x < best_delta_x) {
                 best_x = want_x;
+                best_delta_x = delta_x;
+            }
+
+            int32_t want_y = y_snaps[i];
+            int32_t delta_y = abs(focused->y - want_y);
+            if (y_feasible && delta_y < best_delta_y) {
                 best_y = want_y;
-                best_delta = delta;
+                best_delta_y = delta_y;
             }
         }
     }
 
-    if (best_delta < 200) {
+    const int32_t delta_threshold = 200;
+    if (best_delta_x <= delta_threshold) {
         focused->x = best_x;
+    }
+    if (best_delta_y <= delta_threshold) {
         focused->y = best_y;
     }
 }
