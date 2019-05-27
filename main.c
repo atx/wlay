@@ -435,7 +435,7 @@ static void wlay_gui_init(struct wlay_state *wlay)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GL_FALSE);
+    glfwWindowHint(GLFW_ALPHA_BITS, 0);
     glfwWindowHint(GLFW_FOCUSED, GL_FALSE);
     wlay->gl.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "wlay", NULL, NULL);
     glfwMakeContextCurrent(wlay->gl.window);
@@ -928,7 +928,6 @@ int main(void)
 
     while (!glfwWindowShouldClose(wlay.gl.window))
     {
-        /* Input */
         glfwPollEvents();
         nk_glfw3_new_frame();
 
@@ -939,12 +938,6 @@ int main(void)
             wl_display_dispatch(wlay.wl.display);
         }
 
-        /* Draw */
-        int width, height;
-        glfwGetWindowSize(wlay.gl.window, &width, &height);
-        glViewport(0, 0, width, height);
-        glClear(GL_COLOR_BUFFER_BIT);
-        glClearColor(0., 0., 0., 1.);
         nk_glfw3_render(NK_ANTI_ALIASING_ON, MAX_VERTEX_BUFFER, MAX_ELEMENT_BUFFER);
         glfwSwapBuffers(wlay.gl.window);
     }
