@@ -49,6 +49,7 @@
 enum wlay_config_type {
     WLAY_CONFIG_SWAY,
     WLAY_CONFIG_WLRRANDR,
+    WLAY_CONFIG_KANSHI,
 };
 
 struct wlay_state {
@@ -767,11 +768,31 @@ static void wlay_save_config_wlrrandr(struct wlay_state *wlay, FILE *f)
 }
 
 
+static void wlay_save_config_kanshi(struct wlay_state *wlay, FILE *f)
+{
+    struct wlay_head *head;
+    fprintf(f, "{\n");
+    wl_list_for_each(head, &wlay->wl.heads, link) {
+        if (head->enabled) {
+            fprintf(f, "\toutput %s resolution %dx%d position %d,%d transform %s\n",
+                    head->name,
+                    head->current_mode->width, head->current_mode->height,
+                    head->x, head->y,
+                    wlay_output_transform_names[head->transform]);
+        } else {
+            fprintf(f, "\toutput %s disable", head->name);
+        }
+    }
+    fprintf(f, "}\n");
+}
+
+
 static void wlay_save_config(struct wlay_state *wlay)
 {
     void (*handlers[])(struct wlay_state *, FILE *) = {
         [WLAY_CONFIG_SWAY] = wlay_save_config_sway,
         [WLAY_CONFIG_WLRRANDR] = wlay_save_config_wlrrandr,
+        [WLAY_CONFIG_KANSHI] = wlay_save_config_kanshi,
     };
     log_info("Saving to %s", wlay->gui.file_path);
     FILE *f = fopen(wlay->gui.file_path, "w");
@@ -863,6 +884,7 @@ static void wlay_gui(struct wlay_state *wlay)
             const char *mode_strs[] = {
                 [WLAY_CONFIG_SWAY] = "sway",
                 [WLAY_CONFIG_WLRRANDR] = "wlr-randr",
+                [WLAY_CONFIG_KANSHI] = "kanshi",
             };
             nk_layout_row_push(ctx, 100);
             wlay->gui.config_type = nk_combo(
