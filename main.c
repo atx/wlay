@@ -159,12 +159,13 @@ static void error_callback(int e, const char *d)
 
 static void handle_mode_size(void *data,
                              struct zwlr_output_mode_v1 *wlr_mode,
-		                     int32_t width, int32_t height)
+		             int32_t width, int32_t height)
 {
     struct wlay_mode *mode = data;
     mode->width = width;
     mode->height = height;
 }
+
 
 static void handle_mode_refresh(void *data,
 	                        struct zwlr_output_mode_v1 *wlr_mode,
@@ -174,6 +175,7 @@ static void handle_mode_refresh(void *data,
     mode->refresh_rate = refresh;
 }
 
+
 static void handle_mode_preferred(void *data,
 		                  struct zwlr_output_mode_v1 *wlr_mode)
 {
@@ -181,8 +183,9 @@ static void handle_mode_preferred(void *data,
     mode->preferred = true;
 }
 
+
 static void handle_mode_finished(void *data,
-		                         struct zwlr_output_mode_v1 *wlr_mode)
+                                 struct zwlr_output_mode_v1 *wlr_mode)
 {
     struct wlay_mode *mode = data;
     wl_list_remove(&mode->link);
@@ -190,12 +193,14 @@ static void handle_mode_finished(void *data,
     free(mode);
 }
 
+
 static const struct zwlr_output_mode_v1_listener wlr_output_mode_listener = {
 	.size = handle_mode_size,
 	.refresh = handle_mode_refresh,
 	.preferred = handle_mode_preferred,
 	.finished = handle_mode_finished,
 };
+
 
 static void handle_head_name(void *data,
                              struct zwlr_output_head_v1 *wlr_head,
@@ -205,12 +210,15 @@ static void handle_head_name(void *data,
     head->name = strdup(name);
 }
 
+
 static void handle_head_description(void *data,
-		struct zwlr_output_head_v1 *wlr_head, const char *description)
+                                    struct zwlr_output_head_v1 *wlr_head,
+                                    const char *description)
 {
     struct wlay_head *head = data;
     head->description = strdup(description);
 }
+
 
 static void handle_head_physical_size(void *data,
 		                      struct zwlr_output_head_v1 *wlr_head,
@@ -220,6 +228,7 @@ static void handle_head_physical_size(void *data,
     head->physical_width = width;
     head->physical_height = height;
 }
+
 
 static void handle_head_mode(void *data,
 		             struct zwlr_output_head_v1 *wlr_head,
@@ -235,6 +244,7 @@ static void handle_head_mode(void *data,
     zwlr_output_mode_v1_add_listener(wlr_mode, &wlr_output_mode_listener, mode);
 }
 
+
 static void handle_head_enabled(void *data,
 		                struct zwlr_output_head_v1 *wlr_head,
                                 int32_t enabled)
@@ -245,6 +255,7 @@ static void handle_head_enabled(void *data,
         head->current_mode = NULL;
     }
 }
+
 
 static void handle_head_current_mode(void *data,
 		                     struct zwlr_output_head_v1 *wlr_head,
@@ -263,6 +274,7 @@ static void handle_head_current_mode(void *data,
     log_info("Unknown mode");
 }
 
+
 static void handle_head_position(void *data,
 		                 struct zwlr_output_head_v1 *wlr_head,
                                  int32_t x, int32_t y)
@@ -272,6 +284,7 @@ static void handle_head_position(void *data,
     head->y = y;
 }
 
+
 static void handle_head_transform(void *data,
 		                  struct zwlr_output_head_v1 *wlr_head,
                                   int32_t transform)
@@ -280,12 +293,14 @@ static void handle_head_transform(void *data,
     head->transform = transform;
 }
 
+
 static void handle_head_scale(void *data,
 		              struct zwlr_output_head_v1 *wlr_head, wl_fixed_t scale)
 {
     struct wlay_head *head = data;
     head->scale = scale;
 }
+
 
 static void handle_head_finished(void *data,
 		                 struct zwlr_output_head_v1 *wlr_head)
@@ -297,6 +312,7 @@ static void handle_head_finished(void *data,
     free(head->description);
     free(head);
 }
+
 
 static const struct zwlr_output_head_v1_listener wlr_head_listener = {
 	.name = handle_head_name,
