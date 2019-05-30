@@ -31,3 +31,5 @@ include_directories ("${CMAKE_BINARY_DIR}")
 
 add_executable (wlay main.c ${WLR_OUTPUT_MANAGEMENT_SRC})
 target_link_libraries (wlay ${GLFW_LIBRARIES} ${GLEW_LIBRARIES} ${Wayland_LIBRARIES})
+
+install (TARGETS wlay RUNTIME DESTINATION bin COMPONENT bin)
