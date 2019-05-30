@@ -511,13 +511,21 @@ static void wlay_gui_editor_head(struct wlay_head *head)
         head->h*editor_scale
     );
     nk_layout_space_push(ctx, bounds);
-    if (nk_group_begin(ctx, head->name, NK_WINDOW_MOVABLE | NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
+    nk_style_push_color(ctx, &ctx->style.window.group_border_color,
+                        nk_rgb(200, 200, 200));
+    nk_style_push_vec2(ctx, &ctx->style.window.group_padding, nk_vec2(0, 0));
+    nk_style_push_style_item(
+        ctx, &ctx->style.window.fixed_background,
+        nk_style_item_color(head->focused ? nk_rgb(60, 60, 60) : nk_rgb(50, 50, 50))
+    );
+    if (nk_group_begin(ctx, head->name, NK_WINDOW_NO_SCROLLBAR | NK_WINDOW_BORDER)) {
         nk_layout_row_static(ctx, bounds.h, bounds.w, 1);
         nk_label_colored(
             ctx, head->name, NK_TEXT_CENTERED,
-            head->focused ? nk_rgb(200, 100, 100) : ctx->style.text.color
+            head->focused ? nk_rgb(200, 60, 60) : ctx->style.text.color
         );
     
+        // Drag handling
         struct nk_input *in = &ctx->input;
         bool left_mouse_down = in->mouse.buttons[NK_BUTTON_LEFT].down;
         bool left_mouse_clicked = in->mouse.buttons[NK_BUTTON_LEFT].clicked;
@@ -539,6 +547,9 @@ static void wlay_gui_editor_head(struct wlay_head *head)
         }
         nk_group_end(ctx);
     }
+    nk_style_pop_style_item(ctx);
+    nk_style_pop_vec2(ctx);
+    nk_style_pop_color(ctx);
 }
 
 
@@ -847,7 +858,7 @@ static void wlay_gui(struct wlay_state *wlay)
         nk_layout_row_static(ctx, 10, 100, 1);
         nk_layout_row_begin(ctx, NK_STATIC, 0, 6);
         {
-            nk_layout_row_push(ctx, 50);
+            nk_layout_row_push(ctx, 60);
             if (nk_button_label(ctx, "Apply")) {
                 wlay->should_apply = true;
             }

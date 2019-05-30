@@ -1,7 +1,7 @@
 # wlay
 Graphical output management for Wayland. Work in progress.
 
-![screenshot](https://user-images.githubusercontent.com/3966931/58381331-3e75d680-7fbc-11e9-9199-bb49e26670b7.png)
+![screenshot](https://user-images.githubusercontent.com/3966931/58671625-8e99c380-8343-11e9-9a8e-df6c3896eb45.png)
 
 ## Building
 
