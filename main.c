@@ -12,7 +12,9 @@
 #include <stdbool.h>
 #include <wayland-client.h>
 
-#include <GL/glew.h>
+#include <epoxy/gl.h>
+#include <epoxy/glx.h>
+
 #include <GLFW/glfw3.h>
 
 #include "wayland-wlr-output-management-client-protocol.h"
@@ -444,10 +446,6 @@ static void wlay_gui_init(struct wlay_state *wlay)
 
     /* OpenGL */
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-    glewExperimental = 1;
-    if (glewInit() != GLEW_OK) {
-        fail("GLEW failed to initialize");
-    }
 
     wlay->nk = nk_glfw3_init(wlay->gl.window, NK_GLFW3_INSTALL_CALLBACKS);
     /* Load Fonts: if none of these are loaded a default font will be used  */

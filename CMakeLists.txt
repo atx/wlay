@@ -9,7 +9,7 @@ find_package (Wayland REQUIRED)
 find_package (WaylandScanner REQUIRED)
 find_package (PkgConfig REQUIRED)
 pkg_search_module (GLFW REQUIRED glfw3)
-pkg_search_module (GLEW REQUIRED glew)
+pkg_search_module (EPOXY REQUIRED epoxy)
 
 option (WITH_ASAN "Enable ASan" OFF)
 
@@ -30,6 +30,6 @@ include_directories (nuklear/)
 include_directories ("${CMAKE_BINARY_DIR}")
 
 add_executable (wlay main.c ${WLR_OUTPUT_MANAGEMENT_SRC})
-target_link_libraries (wlay ${GLFW_LIBRARIES} ${GLEW_LIBRARIES} ${Wayland_LIBRARIES})
+target_link_libraries (wlay ${GLFW_LIBRARIES} ${EPOXY_LIBRARIES} ${Wayland_LIBRARIES})
 
 install (TARGETS wlay RUNTIME DESTINATION bin COMPONENT bin)
