@@ -783,7 +783,7 @@ static void wlay_save_config_kanshi(struct wlay_state *wlay, FILE *f)
     fprintf(f, "{\n");
     wl_list_for_each(head, &wlay->wl.heads, link) {
         if (head->enabled) {
-            fprintf(f, "\toutput %s resolution %dx%d position %d,%d transform %s\n",
+            fprintf(f, "\toutput %s mode %dx%d position %d,%d transform %s\n",
                     head->name,
                     head->current_mode->width, head->current_mode->height,
                     head->x, head->y,
